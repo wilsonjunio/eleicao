@@ -275,7 +275,7 @@ class AppEleicoesUnicoArquivo:
         return merged
 
     def carregar_dados(self):
-        nome_arquivo = "votacao_secao_2026_BR_1_E_2_TURNO.csv"
+        nome_arquivo = "votacao_secao_2026_BR.csv"
         colunas = [
             "NR_TURNO",
             "SG_UF",
