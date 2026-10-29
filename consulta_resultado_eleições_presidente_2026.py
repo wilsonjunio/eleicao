@@ -7,8 +7,8 @@ class AppEleicoesUnicoArquivo:
 
     def __init__(self, root):
         self.root = root
-        self.root.title("Comparativo de Eleições - 1º Turno vs 2º Turno (Arquivo Único)")
-        self.root.geometry("1000x650")
+        self.root.title("Comparativo de Eleições - 1º Turno vs 2º Turno")
+        self.root.geometry("1000x680")
 
         # Criando o sistema de abas
         self.notebook = ttk.Notebook(root)
@@ -19,6 +19,7 @@ class AppEleicoesUnicoArquivo:
         self.aba_estado = ttk.Frame(self.notebook)
         self.aba_municipio = ttk.Frame(self.notebook)
         self.aba_local = ttk.Frame(self.notebook)
+        self.aba_secao = ttk.Frame(self.notebook)
         self.aba_candidato = ttk.Frame(self.notebook)
         self.aba_cem_pct = ttk.Frame(self.notebook)
 
@@ -26,6 +27,7 @@ class AppEleicoesUnicoArquivo:
         self.notebook.add(self.aba_estado, text="Por Estado (UF)")
         self.notebook.add(self.aba_municipio, text="Por Município")
         self.notebook.add(self.aba_local, text="Por Local de Votação")
+        self.notebook.add(self.aba_secao, text="Por Seção Eleitoral")
         self.notebook.add(self.aba_candidato, text="Desempenho Candidato")
         self.notebook.add(self.aba_cem_pct, text="100% dos Votos (2ºT)")
 
@@ -34,6 +36,7 @@ class AppEleicoesUnicoArquivo:
         self._setup_aba_estado()
         self._setup_aba_municipio()
         self._setup_aba_local()
+        self._setup_aba_secao()
         self._setup_aba_candidato()
         self._setup_aba_cem_pct()
 
@@ -154,6 +157,61 @@ class AppEleicoesUnicoArquivo:
 
         self.tabela_loc = self._criar_tabela(
             self.aba_local,
+            ("Candidato", "1º Turno", "2º Turno", "Diferença", "Variação %"),
+            [320, 140, 140, 140, 120],
+        )
+
+    def _setup_aba_secao(self):
+        lbl = tk.Label(
+            self.aba_secao,
+            text="Consulta por Zona e Seção Eleitoral",
+            font=("Arial", 12, "bold"),
+        )
+        lbl.pack(pady=10)
+
+        # Filtros encadeados: UF -> Município -> Zona -> Seção (separadas)
+        frame_top1 = tk.Frame(self.aba_secao)
+        frame_top1.pack(fill="x", padx=15, pady=3)
+
+        tk.Label(frame_top1, text="UF:").pack(side="left", padx=2)
+        self.combo_sec_uf = ttk.Combobox(
+            frame_top1, state="readonly", width=5, font=("Arial", 10)
+        )
+        self.combo_sec_uf.pack(side="left", padx=5)
+        self.combo_sec_uf.bind("<<ComboboxSelected>>", self._atualizar_sec_mun)
+
+        tk.Label(frame_top1, text="Município:").pack(side="left", padx=2)
+        self.combo_sec_mun = ttk.Combobox(
+            frame_top1, state="readonly", font=("Arial", 10), width=25
+        )
+        self.combo_sec_mun.pack(side="left", fill="x", expand=True, padx=5)
+        self.combo_sec_mun.bind(
+            "<<ComboboxSelected>>", self._atualizar_sec_zonas
+        )
+
+        frame_top2 = tk.Frame(self.aba_secao)
+        frame_top2.pack(fill="x", padx=15, pady=5)
+
+        tk.Label(frame_top2, text="Zona Eleitoral:").pack(side="left", padx=2)
+        self.combo_sec_zona = ttk.Combobox(
+            frame_top2, state="readonly", font=("Arial", 10), width=15
+        )
+        self.combo_sec_zona.pack(side="left", padx=5)
+        self.combo_sec_zona.bind(
+            "<<ComboboxSelected>>", self._atualizar_sec_secoes
+        )
+
+        tk.Label(frame_top2, text="Seção:").pack(side="left", padx=5)
+        self.combo_sec_secao = ttk.Combobox(
+            frame_top2, state="readonly", font=("Arial", 10), width=15
+        )
+        self.combo_sec_secao.pack(side="left", padx=5)
+        self.combo_sec_secao.bind(
+            "<<ComboboxSelected>>", self.exibir_votos_secao
+        )
+
+        self.tabela_sec = self._criar_tabela(
+            self.aba_secao,
             ("Candidato", "1º Turno", "2º Turno", "Diferença", "Variação %"),
             [320, 140, 140, 140, 120],
         )
@@ -311,17 +369,20 @@ class AppEleicoesUnicoArquivo:
             # 3. Agrupamento Local de Votação
             self.df_local = self._agrupar_por_turno(df, ["SG_UF", "NM_MUNICIPIO", "NM_LOCAL_VOTACAO"])
 
-            # 4. Processamento Específico para Seções com 100% dos votos (Apenas 2º Turno)
+            # 4. Agrupamento por Seção Eleitoral Específica (UF, Município, Zona, Seção)
+            self.df_secao = self._agrupar_por_turno(
+                df, ["SG_UF", "NM_MUNICIPIO", "NR_ZONA", "NR_SECAO"]
+            )
+
+            # 5. Processamento para Seções com 100% dos votos (Apenas 2º Turno)
             df_t2 = df[df["NR_TURNO"] == 2].copy()
 
-            # Votos por candidato em cada seção/zona
             votos_secao_cand = (
                 df_t2.groupby(["SG_UF", "NM_MUNICIPIO", "NR_ZONA", "NR_SECAO", "NM_LOCAL_VOTACAO", "NM_VOTAVEL"])["QT_VOTOS"]
                 .sum()
                 .reset_index()
             )
 
-            # Total de votos da seção inteira
             totais_secao = (
                 df_t2.groupby(["SG_UF", "NM_MUNICIPIO", "NR_ZONA", "NR_SECAO"])["QT_VOTOS"]
                 .sum()
@@ -329,12 +390,10 @@ class AppEleicoesUnicoArquivo:
                 .rename(columns={"QT_VOTOS": "TOTAL_SECAO"})
             )
 
-            # Merge para identificar 100%
             merged_secoes = pd.merge(
                 votos_secao_cand, totais_secao, on=["SG_UF", "NM_MUNICIPIO", "NR_ZONA", "NR_SECAO"]
             )
 
-            # Considera 100% se a quantidade de votos do candidato for igual ao total da seção (e total > 0)
             self.df_cem_pct = merged_secoes[
                 (merged_secoes["QT_VOTOS"] == merged_secoes["TOTAL_SECAO"]) & (merged_secoes["TOTAL_SECAO"] > 0)
             ]
@@ -347,6 +406,7 @@ class AppEleicoesUnicoArquivo:
             self.combo_uf["values"] = ufs
             self.combo_mun_uf["values"] = ufs
             self.combo_loc_uf["values"] = ufs
+            self.combo_sec_uf["values"] = ufs
 
             candidatos = sorted(self.df_local["NM_VOTAVEL"].unique().tolist())
             self.combo_cand["values"] = candidatos
@@ -355,10 +415,15 @@ class AppEleicoesUnicoArquivo:
             if ufs:
                 self.combo_uf.current(0)
                 self.exibir_votos_uf()
+                
                 self.combo_mun_uf.current(0)
                 self._atualizar_mun_list()
+                
                 self.combo_loc_uf.current(0)
                 self._atualizar_loc_mun()
+
+                self.combo_sec_uf.current(0)
+                self._atualizar_sec_mun()
 
             if candidatos:
                 self.combo_cand.current(0)
@@ -408,6 +473,7 @@ class AppEleicoesUnicoArquivo:
         )
         self._preencher_tabela_comparativa(self.tabela_uf, dados)
 
+    # Lógica de atualização por Município
     def _atualizar_mun_list(self, event=None):
         uf = self.combo_mun_uf.get()
         muns = sorted(
@@ -442,6 +508,7 @@ class AppEleicoesUnicoArquivo:
         ].sort_values(by="QT_VOTOS_T2", ascending=False)
         self._preencher_tabela_comparativa(self.tabela_mun, dados)
 
+    # Lógica de atualização por Local de Votação
     def _atualizar_loc_mun(self, event=None):
         uf = self.combo_loc_uf.get()
         muns = sorted(
@@ -480,6 +547,75 @@ class AppEleicoesUnicoArquivo:
             & (self.df_local["NM_LOCAL_VOTACAO"] == loc)
         ].sort_values(by="QT_VOTOS_T2", ascending=False)
         self._preencher_tabela_comparativa(self.tabela_loc, dados)
+
+    # Lógica de atualização por Seção Eleitoral (UF -> Município -> Zona -> Seção)
+    def _atualizar_sec_mun(self, event=None):
+        uf = self.combo_sec_uf.get()
+        muns = sorted(
+            self.df_secao[self.df_secao["SG_UF"] == uf]["NM_MUNICIPIO"]
+            .unique()
+            .tolist()
+        )
+        self.combo_sec_mun["values"] = muns
+        if muns:
+            self.combo_sec_mun.current(0)
+            self._atualizar_sec_zonas()
+
+    def _atualizar_sec_zonas(self, event=None):
+        uf = self.combo_sec_uf.get()
+        mun = self.combo_sec_mun.get()
+        zonas = sorted(
+            self.df_secao[
+                (self.df_secao["SG_UF"] == uf)
+                & (self.df_secao["NM_MUNICIPIO"] == mun)
+            ]["NR_ZONA"]
+            .unique()
+            .tolist()
+        )
+        self.combo_sec_zona["values"] = [int(z) for z in zonas]
+        if zonas:
+            self.combo_sec_zona.current(0)
+            self._atualizar_sec_secoes()
+
+    def _atualizar_sec_secoes(self, event=None):
+        uf = self.combo_sec_uf.get()
+        mun = self.combo_sec_mun.get()
+        zona = self.combo_sec_zona.get()
+
+        if not zona:
+            return
+
+        secoes = sorted(
+            self.df_secao[
+                (self.df_secao["SG_UF"] == uf)
+                & (self.df_secao["NM_MUNICIPIO"] == mun)
+                & (self.df_secao["NR_ZONA"] == int(zona))
+            ]["NR_SECAO"]
+            .unique()
+            .tolist()
+        )
+        self.combo_sec_secao["values"] = [int(s) for s in secoes]
+        if secoes:
+            self.combo_sec_secao.current(0)
+            self.exibir_votos_secao()
+
+    def exibir_votos_secao(self, event=None):
+        uf = self.combo_sec_uf.get()
+        mun = self.combo_sec_mun.get()
+        zona = self.combo_sec_zona.get()
+        secao = self.combo_sec_secao.get()
+
+        if not zona or not secao:
+            return
+
+        dados = self.df_secao[
+            (self.df_secao["SG_UF"] == uf)
+            & (self.df_secao["NM_MUNICIPIO"] == mun)
+            & (self.df_secao["NR_ZONA"] == int(zona))
+            & (self.df_secao["NR_SECAO"] == int(secao))
+        ].sort_values(by="QT_VOTOS_T2", ascending=False)
+
+        self._preencher_tabela_comparativa(self.tabela_sec, dados)
 
     def exibir_desempenho_candidato(self, event=None):
         cand = self.combo_cand.get()
@@ -536,8 +672,8 @@ class AppEleicoesUnicoArquivo:
                 values=(
                     row["SG_UF"],
                     row["NM_MUNICIPIO"],
-                    row["NR_ZONA"],
-                    row["NR_SECAO"],
+                    int(row["NR_ZONA"]),
+                    int(row["NR_SECAO"]),
                     row["NM_LOCAL_VOTACAO"],
                     votos,
                 ),
